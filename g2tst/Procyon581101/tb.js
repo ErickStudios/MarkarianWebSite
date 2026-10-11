@@ -21,9 +21,10 @@
  * LOGICAL_CHIP ABSOLUTE ADDRESSE FROM THE START MMIO ZONE
  * **************************************************
  * 
- * 401 _W WORD - SET SECTOR CARD0
- * 403 R_ WORD - READ 2 BYTES CARD0 (big endian)
- * 405 _W BYTE - STEP READER
+ * 401 _W WORD - SET SECTOR CARD
+ * 403 R_ WORD - READ 2 BYTES CARD (big endian)
+ * 405 _W BYTE - CARD STEP READER
+ * 406 _W BYTE - CARD SELECTOR
  * 430 R_ BYTE - GPU_SOON FLAG (WARN before REFRESH-REST, anti-tear)
  * 440 RW BYTE - KBD queue pop/shift / push / write= set keyboard emulate mode
  * 441 R_ BYTE - LIGHTPEN X
@@ -32,21 +33,23 @@
  * 450 _W BYTE - SND CW select
  * 451 _W BYTE - SND WAVE type
  * 452 _W WORD - SND FREQ
+ * 470 _W WORD - MEMORY MASK (FFF = EMULATE OLD PROCYON MODEL, BOOTS WITH THIS MASK, can extend to 64K writing FFFF)
  * 500 _W BYTE - RET (pop PC, value dont care)
  * 501 _W BYTE - LINK (push PC for next JMP)
  * 600 _W BYTE - GPU ACTION FROM ADDRESS STRUCT IN MEMORY (#GPU-MAK)
  * 
- * BUTTONS:     BRK=cold reset (uninterceptable), 
- *              A=01h 
- *              B=02h 
- *              X=03h 
- *              Y=04h 
- *              V=0Ah 
- *              N=0Bh 
- *              L=07h
- *              W=05h
- *              Z=06h
- *              J=08h
+ * BUTTONS (LEGACY LAYOUT): BRK=cold reset (uninterceptable), 
+ *                          A=01h 
+ *                          B=02h 
+ *                          X=03h 
+ *                          Y=04h 
+ *                          V=0Ah 
+ *                          N=0Bh 
+ *                          L=07h
+ *                          W=05h
+ *                          Z=06h
+ *                          J=08h
+ * BUTTONS (NORMAL MODE): THIS LITERALLY SPITS ASCII CODE OF LETTERS
  * 
  * GPU-MAK: &PTR[ACTION, P1, P2, ...]
  *          ACTION 1: replaces of#P2 tile presets from P1 each tile map is 4 bits per pixel, and is a 6x6 pixels (18 bytes)
@@ -118,6 +121,105 @@ let rom = emp.g2asm.parseAsm(await loadFile('./bios.asm')).result
 let rom2 = emp.g2asm.parseAsm(await loadFile('./fd2.asm')).result
 let vdclrPre = ['#000','#888','#800','#740','#880','#680','#228','#508','#444','#ddd','#f44','#d80','#cc0','#9f4','#aae','#548']
 let vdclr = [...vdclrPre]
+
+/** @type {CardDriver | null} */
+let globalCardReference = null;
+class CardDriver {
+    /** @param {HTMLElement} slot  */
+    constructor(slot, allowWrite) {
+        this.slot = slot;
+        this.allowWrite = allowWrite;
+        this.cardContent = null;
+        this.Eject();
+        this.virtualIndex = 0;
+        /** @type { HTMLElement | null } */
+        this.contextMenu = null;
+        this.slot.addEventListener('contextmenu', (e) => {
+            if (this.contextMenu) {
+                this.contextMenu.remove();
+                this.contextMenu = null;
+            }
+            else {
+                this.contextMenu = document.createElement('div');
+                this.contextMenu.style.position = "absolute";
+                this.contextMenu.style.left = e.clientX + "px";
+                this.contextMenu.style.top = e.clientY + "px";
+                this.contextMenu.style.background = "#2d2d2d";
+                this.contextMenu.style.padding = "5px";
+                this.contextMenu.style.border = "1px solid #444";
+                this.contextMenu.style.borderRadius = "6px";
+
+                let downloadImg = document.createElement('button');
+                downloadImg.addEventListener('click', () => {
+                    const blob = new Blob([new Uint8Array(this.cardContent)], {type: 'application/octet-stream'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = 'cardContent.bin'; a.click();
+                    setTimeout(()=> URL.revokeObjectURL(url), 2000);
+                    this.contextMenu.remove();
+                })
+                downloadImg.textContent = 'Download Bin';
+
+                this.contextMenu.appendChild(downloadImg)
+
+                document.body.appendChild(this.contextMenu)
+            }
+        })
+        this.slot.addEventListener('click', () => {
+            if (this.cardContent) {
+                this.Eject();
+            }
+            else {
+                globalCardReference = this;
+                document.getElementById('CardSdSelect').click();
+            }
+        })
+    }
+    ReadCard(index) {
+        if (Array.isArray(this.cardContent)) {
+            return this.cardContent[index];
+        }
+        return 0;
+    }
+    WriteCard(index, data) {
+        if (Array.isArray(this.cardContent) && this.allowWrite) {
+            this.cardContent[index] = data;
+        }
+    }
+    CardStatus() {
+        return Array.isArray(this.cardContent) ? 0 : 0xFF;
+    }
+    VirtualInsert(a3) {
+        this.slot.className = 'cardInserted';
+        if (a3) {
+            if (a3 instanceof Uint8Array) {
+                this.cardContent = Array.from(a3);
+            }
+            else this.cardContent = [...a3];
+            this.slot.title = 'click to eject (autogenerated)';
+        }
+    }
+    Eject() {
+        this.virtualIndex = 0;
+        this.slot.title = 'click to insert a card of bit by inverted binary braile';
+        this.cardContent = null;
+        this.slot.className = 'cardNoPresent';
+    }
+}
+
+let cardsConected = [
+    new CardDriver(document.getElementById('CardSdSelectStyle'), false),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    new CardDriver(document.getElementById('Card8'), true)
+]
+cardsConected[8].VirtualInsert(new Uint8Array(4096));
+
 let LogicalChip = {
     // MMIO Space
     baseAddr:           0x400,
@@ -127,6 +229,7 @@ let LogicalChip = {
     cardIndex:          0,
     cardSector:         0,
     cardBytesReaded:    0,
+    actualCardIndex:    0,
 
     // Audio LOGICAL CHIP remembers
     efectiveVideoModAdr:0,
@@ -138,12 +241,14 @@ let LogicalChip = {
         // Card0 Reading
         if (port == 3 || port == 4) {
             this.cardBytesReaded ++;
-            return card != null ? card[this.cardIndex + (port - 3)] : 0;
+            let cardManager = cardsConected[this.actualCardIndex];
+            console.log(cardManager.virtualIndex + (port - 3));
+            return cardManager.ReadCard(cardManager.virtualIndex + (port - 3))
         }
 
         // Card0 Present
         else if (port == 0x00)
-            return Array.isArray(card) ? 0x00 : 0xFF;
+            return cardsConected[this.actualCardIndex].CardStatus();
 
         // GPU Warns
         else if (port == 0x30) {
@@ -169,17 +274,28 @@ let LogicalChip = {
     out(port, data) {
         // Card0 Sector set
         if (port == 1) {
+            let cardActual = cardsConected[this.actualCardIndex];
             this.cardSector = (this.cardSector & 0xFF) | (data << 8);
-            this.cardIndex = this.cardSector * 512;
+            cardActual.virtualIndex = this.cardSector * 512;
         }
         else if (port == 2) {
+            let cardActual = cardsConected[this.actualCardIndex];
             this.cardSector = (this.cardSector & 0xFF00) | data;
-            this.cardIndex = this.cardSector * 512;
+            cardActual.virtualIndex = this.cardSector * 512;
+        }
+        else if (port == 6) {
+            this.actualCardIndex = data;
         }
 
+        // Card0 Writing
+        else if (port == 3 || port == 4) {
+            let cardManager = cardsConected[this.actualCardIndex];
+            cardManager.WriteCard(cardManager.virtualIndex + (port - 3), data)
+        }
+        
         // Card0 stepper
         else if (port == 5) {
-            this.cardIndex += data;
+            cardsConected[this.actualCardIndex].virtualIndex += data;
         }
 
         // Keyboard Controller
@@ -195,6 +311,9 @@ let LogicalChip = {
         else if (port == 0x100) {
             pc = (cpu.rex(sp) << 8) | cpu.rex(sp+1) - ((rtins & 0x800000) == 0x800000 ? 3 : 2);
             sp+=2;
+        }
+        else if (port == 0x110) {
+            window.halted = true;
         }
 
         // GPU Actions
@@ -368,6 +487,7 @@ function EMULATORReset() {
         spritePalette[index] = knowPresets[index - 32];
     }
 
+    LogicalChip.actualCardIndex = 0;
     mem_limit = 0xFFF;
     vdclr = [...vdclrPre]
     keyboard_compatibility_mode = false;
@@ -573,7 +693,7 @@ input.addEventListener('change', async (e)=>{
 
   // If File Pressent
   if(file) {
-        cardstyle.className = 'cardInserted';
+        globalCardReference.slot.className = 'cardInserted';
 
         let isAsm = file.name.toLowerCase().endsWith('.asm') || file.name.toLowerCase().endsWith('.s')
         let cardVrtName = file.name.toUpperCase();
@@ -582,18 +702,16 @@ input.addEventListener('change', async (e)=>{
         // Compilation Of Assembler
         if (isAsm) {
             that = cardVrtName.split('.')[0];
-            card = emp.g2asm.parseAsm((await file.text())).result;
+            globalCardReference.cardContent = emp.g2asm.parseAsm((await file.text())).result;
             LogicalChip.cardBytesReaded = 0;
-            console.log(card.length)
         }
         else {
             const buf = await file.arrayBuffer();
-            card = Array.from(new Uint8Array(buf));
+            globalCardReference.cardContent = Array.from(new Uint8Array(buf));
             LogicalChip.cardBytesReaded = 0;
-            console.log(card.length)
         }
 
-        cardstyle.title = 'click to eject ' + that
+        globalCardReference.slot.title = 'click to eject ' + that
     }
 });
 board.addEventListener('keydown', EMULATORKeyIntercept);
@@ -666,16 +784,6 @@ window.sendIonj = function(s) {
     }
     else kybuf.push(s)
 }
-cardstyle.addEventListener('click', () => {
-    if (card) {
-        CARD0Eject();
-    }
-    else { 
-        document.getElementById('CardSdSelect').click();
-    }
-})
-
-cardstyle.title = 'click to insert a card of bit by inverted binary braile';
 
 window.palette = spritePalette
 
@@ -690,12 +798,16 @@ window.cpu = {
 
 console.log(rom2.length)
 
+window.memram = ram0;
+
 // Cpu Instruction Autoexecuted
 setInterval(function () {
     if (!window.halted) {
         for (let index = 0; index < 1600 * (turbo_mode ? 10 : 1); index++) {
-            LOGICStep();
-            GPUCHIPStep();
+            if (!window.halted) {
+                LOGICStep();
+                GPUCHIPStep();
+            }
         }
     }
 }, 50);
