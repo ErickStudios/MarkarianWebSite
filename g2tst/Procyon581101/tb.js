@@ -76,7 +76,7 @@
 import { AudioChip } from './audio.js'
 import { knowPresets } from './gpuchip.js'
 import { loadFile } from './helper.js'
-import * as emp from "https://cdn.jsdelivr.net/gh/ErickStudios/EMP-Arch@55971303eb5030f82f4e7577b3d9108a67323397/Toolchain/libemp.js?v=200"
+import * as emp from "https://cdn.jsdelivr.net/gh/ErickStudios/EMP-Arch@f95e9ce8231b1f883058d6d8c3749b6d595d2a48/Toolchain/libemp.js?v=200"
 
 // HTML Parameters for emulator
 const dbglog = document.getElementById('debugLog')

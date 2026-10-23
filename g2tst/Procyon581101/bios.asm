@@ -4,6 +4,25 @@
     ;
     ; the std rom that is loaded on
     ; start the console
+    ;
+    ; this is the firmware of PROCYON581101
+    ; that is the same that the PROCYON5800
+    ; firmware, but this, dont wait a card0
+    ; game, these on not card0 inserted,
+    ; bypass the 4K and extends to 64K
+    ; and jumps to a basic firmware
+    ;
+    ; otherwise, these activates a mode
+    ; on keyword to make that not send
+    ; ascii chars directly, limits some
+    ; keys, and map the other keys to
+    ; launch the scancodes that are
+    ; mapped to emulated keys for the game
+    ; think that is gameplaying in PROCYON5800
+    ; gamepad, next, loads the first 1024 bytes
+    ; of card0 to 700h, exactlly as the 
+    ; PROCYON5800 firmware, and jumps to the
+    ; game code
     ; *****************************
 
     local 0f00h

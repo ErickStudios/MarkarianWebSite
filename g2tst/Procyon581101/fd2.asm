@@ -1,15 +1,52 @@
-
-    ; NEW
-    ; LET A IS 12
-    ;  1
-    ; LET B IS $A+2
-    ;  2
-    ; OK
-    ; SAVE
-    ; ...
-    ; LOAD
     
+    ; *****************************
+    ;   PROCYON FAIL PAD FIRMWARE
+    ;
+    ; the std firmware that is loaded
+    ; when a Procyon5800 game is not in
+    ; CARD0, at this point, the machine
+    ; has finally the all 64K physical
+    ; addressing mode (full 16 bit,
+    ; totally diferent than the Procyon5800
+    ; that by default only has 12 bit addrs
+    ; (4K space)
+    ;
+    ; on start the Procyon581101, it
+    ; has a behavior like to the Procyon5800
+    ; behavior to limit and masking the
+    ; first 12 bit of address, but on the
+    ; start firmware on detect that the card0
+    ; is empty of pyshical cyclindrical disk
+    ; actives all the 64 K and jumps to
+    ; this firmware, otherwise, the firmware
+    ; dont make this, the mask is preserved to
+    ; be 0xFFF, and actives the legacy keyboard
+    ; mode, otherwise to the keyboard in normalmode
+    ; spits ASCII characters directly, the char
+    ; keys is mapped to gamepad controls emulating
+    ; by hardware the Procyon5800, and next that
+    ; loads the first 1024 bytes of CARD0 (such as
+    ; the original 5800), and jumps to the loaded
+    ; region 700h (user ram0 space 700-EFF)
+    ;
+    ; that fallback firmware (that this code is for
+    ; itself meaning in this commentary) is a little
+    ; basic, oviusly and of course
+    ; *****************************
+
+    ; ------------------------------------------
     ; A-Z = 26 LETS * 2 = 40 + 12 = 52 bytes
+    ; NEW; ...; OK
+    ; A-Z = A-Z LET
+    ; 0-9 = NUMBERS
+    ; $...{.}... = OPERATIONS
+    ; LET ... IS {...}
+    ; POKE {...} {...}
+    ; PEEK {V} {...}
+    ; SAVE {SECT} {SECTS}
+    ; LOAD {SECT} {SECTS}
+    ; IF ... ... E/L ...
+    ; RUN
 
     local 1000h
 
@@ -31,9 +68,13 @@
     tmp4 equ 86h
     tmp5 equ 88h
 
-    jmp $start
-
+    jmp $start ; jump to start
+    
+    ; *****************************
+    ; EXECUTE BASIC LINE ROUTINE
+    ;
     ; X = BUFFER
+    ; *****************************
 execute:
     stx %z $tmp1
 
@@ -66,6 +107,7 @@ execute:
     lcf $1
     bcf $.letSetAbs
 
+; absolutte let set
 .letSetAbs:
     cha $3
     add %x %a
@@ -77,6 +119,7 @@ execute:
     sty %a $letContents
     sbz %z $500h
 
+; !let
 .isNotLet:
     ldy %x $0
     tiy $504fh
@@ -84,6 +127,7 @@ execute:
     bcf $.tryPoke
     jmp $.isNotPoke
 
+; poke?
 .tryPoke:
     ldy %x $2
     tiy $4b45h
@@ -91,6 +135,7 @@ execute:
     bcf $.isPoke
     jmp $.isNotPoke
 
+; poke behavior
 .isPoke:
     cha $5
     add %x %a
@@ -126,6 +171,7 @@ execute:
     bcf $.isPeek
     jmp $.isNotPeek
 
+; peek behavior
 .isPeek:
     chy $5
     add %x %y
@@ -165,6 +211,7 @@ execute:
     bcf $.isNew
     jmp $.isNotNew
 
+; new behavior
 .isNew:
     jmp $editMode
     sbz %z $500h
@@ -181,7 +228,9 @@ execute:
     tiy $5645h
     lcf $1
     bcf $.isSave
-    jmp $.isNotSave
+    jmp $.isNotSave}
+
+; save behavior
 .isSave:
     cha $5
     add %x %a
@@ -227,6 +276,7 @@ execute:
     bcf $.isLoad
     jmp $.isNotLoad
 
+; load behavior
 .isLoad:
     cha $5
     add %x %a
@@ -267,6 +317,7 @@ execute:
 
     jmp $.isNotIf
 
+; if behavior
 .isIf:
     cha $3
     add %x %a
@@ -348,6 +399,8 @@ execute:
     lcf $1
     bcf $.isRun
     jmp $.isNotRun
+
+; run behavior
 .isRun:
     jmp $runProgram
     sbz %z $500h
@@ -373,6 +426,7 @@ execute:
     bcf $.isPrint
     jmp $.isNotPrint
 
+; print behavior
 .isPrint:
     cha $6
     add %x %a
@@ -458,6 +512,12 @@ execute:
 .isNotPrint:
     sbz %z $500h
 
+    ; *****************************
+    ; RUN PROGRAM IN BUFFER
+    ;
+    ; PARAMS ARE NONE, static buffer
+    ; is used
+    ; *****************************
 runProgram:
     stz %z $basicPc
 .loop:
@@ -474,7 +534,11 @@ runProgram:
     sta %z $basicPc
     jmp $.loop
 
+    ; *****************************
+    ; GET STATMENT OF BASIC EXPRETION
+    ;
     ; X = BUF, Y = VAL
+    ; *****************************
 getStatment:
     lba %x $0
     tia $'$'
@@ -585,7 +649,11 @@ getStatment:
 
     sbz %z $500h
 
+    ; *****************************
+    ; TRIM SPACES WHILE A SPACE IS NOT FINDED
+    ;
     ; X = BUF
+    ; *****************************
 trimSpaces:
 .loop:
     lba %x $0
@@ -598,7 +666,11 @@ trimSpaces:
 .end:
     sbz %z $500h
 
+    ; *****************************
+    ; PARSE INT NUMBER FROM STRING
+    ;
     ; X= BUF, Y= num
+    ; *****************************
 getNumber:
     sub %y %y
 .while:
@@ -629,6 +701,10 @@ getNumber:
     add %x %a
     jmp $.while
 
+    ; *****************************
+    ; EDITOR MODE FOR DOCUMMENT OR
+    ; BASIC SOURCE CODE
+    ; *****************************
 editMode:
     stz %z $ActualFileLine
 .readline:
@@ -693,6 +769,10 @@ editMode:
     jmp $tty
     sbz %z $500h
 
+    ; *****************************
+    ; BASIC LOOP OF FETCH LINE AND
+    ; EXECUTE ON ENTERING IT
+    ; *****************************
 start:
     sub %x %x
     sbz %z $inputCommand
@@ -727,7 +807,12 @@ start:
     jmp $execute
     jmp $start
 
-    ; sprite = A
+    ; *****************************
+    ; TTY FUNCTION FOR A TERMINAL
+    ;
+    ; A = sprite tile index / control
+    ; character
+    ; *****************************
 tty:
     tia $10
     lcf $1

@@ -3,7 +3,12 @@
     ;   PROCYON START FIRMWARE
     ;
     ; the std rom that is loaded on
-    ; start the console
+    ; start the console, for the PROCYON5800
+    ; 
+    ; this firmware, waits to the user inserts
+    ; a card0 game, on insert, loads the first
+    ; 1024 bytes of game to 700h and jumps to
+    ; the start of game code
     ; *****************************
 
     local 0f00h

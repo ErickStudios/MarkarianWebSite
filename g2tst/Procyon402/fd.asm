@@ -1,0 +1,57 @@
+    LOCAL 1000H
+
+    OBJ1X EQU 80H ; X
+    OBJ2Y EQU 81H ; Y
+    OBJ1P EQU OBJ1X ; POS FULL
+    OBJ1W EQU 82H ; WIDTH
+    OBJ1H EQU 83H ; HEIGHT
+    OBJ1S EQU OBJ1W ; SIZE FULL
+
+    ; THE CONTROLLER DONT PROVIDES A CORDINATES
+    ; POSITIONS OFF BEAM, SO WE IMPLEMENT IT
+    RAYX EQU 84H ; RAY X
+    RAYY EQU 85H ; RAY Y
+    RAYP EQU RAYX ; POS FULL
+
+ON:
+    CHA $0A0BH ; X = 0AH, Y = 0BH
+    CHX $0202H ; W = 02H, H= 02H
+
+    STA %Z $OBJ1P
+
+    SBZ %Z $50H
+.WAIT:
+    JMP $.WAIT
+
+SF:
+    STZ %Z $RAYP ; FULL
+.LF:
+    LBA %Z $50H
+    SBA %Z $0D0H
+.LP:
+    LBA %Z $0D2H
+    TSA %Z ; IS WAITING
+    LCF $1
+    BCF $.LP
+
+    LBA %Z $RAYX
+    ADD $1
+    SBA %Z $RAYX
+
+    LBA %Z $0D3H
+    TSA %Z
+    LCF $1
+    BCF $.LP
+
+    SBZ %Z $RAYX
+    
+
+    JMP $.LF
+
+PI: 
+    JMP $PI
+
+    RSV (0FFAH-$)
+    WORD (SF+0)
+    WORD (PI+0)
+    WORD (ON+0)
