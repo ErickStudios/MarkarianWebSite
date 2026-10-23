@@ -26,9 +26,14 @@ ON:
 SF:
     STZ %Z $RAYP ; FULL
 .LF:
-    LBA %Z $50H
-    SBA %Z $0D0H
 .LP:
+    LBA %Z $RAYY
+    SBA %Z $0D0H
+    LBA %Z $0D3H
+    TIA $1
+    LCF $1
+    BCF $.NA
+
     LBA %Z $0D2H
     TSA %Z ; IS WAITING
     LCF $1
@@ -38,13 +43,14 @@ SF:
     ADD $1
     SBA %Z $RAYX
 
-    LBA %Z $0D3H
-    TSA %Z
-    LCF $1
-    BCF $.LP
+    JMP $.LP
+
+.NA:
 
     SBZ %Z $RAYX
-    
+    LBA %Z $RAYY
+    ADD $1
+    SBA %Z $RAYY
 
     JMP $.LF
 

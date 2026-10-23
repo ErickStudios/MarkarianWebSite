@@ -92,7 +92,7 @@ function pxlf(){
     return 0;
 }
 function pxlc() {
-    return Number(px_idle);
+    return Number(px_rmf != 0);
 }
 
 let cpu = new emp.cpuGen2();
@@ -193,6 +193,7 @@ function PyshicStep() {
     VideoStepper();
 }
 
+window.cpu = cpu;
 window.PyshicStep = PyshicStep
 
 setInterval(function () {
